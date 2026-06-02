@@ -168,21 +168,20 @@ def build_bubble(r):
     )
 
 
-def build_list_bubble(results, total):
-    shown = results[:MAX_LIST_ITEMS]
-    title_text = f"พบ {total} รายการ — เลือกดูรายละเอียด"
-    if total > MAX_LIST_ITEMS:
-        title_text += f" (แสดง {MAX_LIST_ITEMS} รายการแรก)"
+ITEMS_PER_BUBBLE = 10
 
-    body_contents = [
-        FlexText(text=title_text, size="sm", color="#555555", wrap=True, margin="none")
-    ]
 
-    for r in shown:
+def build_list_bubble(results, page, total):
+    body_contents = []
+    if page == 0:
+        body_contents.append(
+            FlexText(text=f"พบ {total} รายการ — เลือกดูรายละเอียด", size="sm", color="#555555", wrap=True, margin="none")
+        )
+
+    for r in results:
         label = f"{r['ยศ']} {r['ชื่อ-สกุล']}".strip()
         if r["ชื่อเล่น"]:
             label += f" ({r['ชื่อเล่น']})"
-        # ตัด label ให้ไม่เกิน 40 ตัวอักษร (ข้อจำกัดของ LINE)
         if len(label) > 40:
             label = label[:39] + "…"
 
@@ -206,6 +205,15 @@ def build_list_bubble(results, total):
         body=FlexBox(layout="vertical", contents=body_contents, padding_all="lg"),
         styles={"header": {"backgroundColor": "#1565c0"}, "body": {"backgroundColor": "#ffffff"}}
     )
+
+
+def build_list_message(results):
+    total = len(results)
+    chunks = [results[i:i+ITEMS_PER_BUBBLE] for i in range(0, total, ITEMS_PER_BUBBLE)]
+    bubbles = [build_list_bubble(chunk, idx, total) for idx, chunk in enumerate(chunks)]
+    if len(bubbles) == 1:
+        return FlexMessage(alt_text=f"พบ {total} รายการ กรุณาเลือก", contents=bubbles[0])
+    return FlexMessage(alt_text=f"พบ {total} รายการ กรุณาเลือก", contents=FlexCarousel(contents=bubbles))
 
 
 def build_flex_message(results):
@@ -325,10 +333,7 @@ def handle_message(event):
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
                         reply_token=event.reply_token,
-                        messages=[FlexMessage(
-                            alt_text=f"พบ {len(results)} รายการ กรุณาเลือก",
-                            contents=build_list_bubble(results, len(results))
-                        )]
+                        messages=[build_list_message(results)]
                     )
                 )
             else:
