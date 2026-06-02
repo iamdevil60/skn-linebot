@@ -89,25 +89,39 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
-    text = event.message.text.strip()
+    try:
+        text = event.message.text.strip()
 
-    if not text.startswith("#"):
-        return
+        if not text.startswith("#"):
+            return
 
-    keyword = text[1:].strip()
-    if not keyword:
-        reply = "กรุณาระบุคำค้นหา เช่น #สมชาย หรือ #รุ่น15"
-    else:
-        reply = search_alumni(keyword)
+        keyword = text[1:].strip()
+        if not keyword:
+            reply = "กรุณาระบุคำค้นหา เช่น #สมชาย หรือ #รุ่น15"
+        else:
+            reply = search_alumni(keyword)
 
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=reply)]
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=reply)]
+                )
             )
-        )
+    except Exception as e:
+        app.logger.error(f"handle_message error: {e}", exc_info=True)
+        try:
+            with ApiClient(configuration) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=f"เกิดข้อผิดพลาด: {e}")]
+                    )
+                )
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
