@@ -9,22 +9,25 @@ from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
     ReplyMessageRequest, TextMessage, FlexMessage, FlexCarousel, FlexBubble,
-    FlexBox, FlexText, FlexSeparator, FlexButton, FlexImage, URIAction
+    FlexBox, FlexText, FlexSeparator, FlexButton, FlexImage, URIAction, PostbackAction
 )
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, PostbackEvent
 
 app = Flask(__name__)
 
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "ec13fef6789938fb2f4bfa0053e24922")
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "AS9iC1Gsi0vhK2wtreKqlE0yB9twviXp+JjchPzWGZA0wXXZ06AB5n1irM5iwPZLNfIxc5sYbNuuEr5+4ATch/w2igVeMptfMJd7KAbpEbjx/aEFhOaXsjf9KmxMfbphstrybpBfAtl9L7G1tdp3iwdB04t89/1O/w1cDnyilFU=")
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1WCh7nGdhECzj8Ipl6IxTuDqKsRjABg50XFyZZ2rhQUc")
-
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+LOGO_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/%E0%B8%95%E0%B8%A3%E0%B8%B2%E0%B9%80%E0%B8%AA%E0%B8%A1%E0%B8%B2_%28%E0%B8%8A%E0%B8%A1%E0%B8%9E%E0%B8%B9_-_%E0%B8%9F%E0%B9%89%E0%B8%B2%29.png/250px-%E0%B8%95%E0%B8%A3%E0%B8%B2%E0%B9%80%E0%B8%AA%E0%B8%A1%E0%B8%B2_%28%E0%B8%8A%E0%B8%A1%E0%B8%9E%E0%B8%B9_-_%E0%B8%9F%E0%B9%89%E0%B8%B2%29.png"
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
+LIST_THRESHOLD = 5
 MAX_BUBBLES = 10
+MAX_LIST_ITEMS = 10
 
 
 def fetch_sheet_data():
@@ -75,7 +78,6 @@ def extract_keywords_with_ai(query):
 
 def normalize_keyword(keyword):
     k = keyword.strip().lower()
-    # "#รุ่น58" หรือ "#รุ่นที่58" → "58"
     for prefix in ["รุ่นที่", "รุ่น"]:
         if k.startswith(prefix):
             k = k[len(prefix):].strip()
@@ -105,118 +107,113 @@ def search_alumni(keywords):
     return results, None
 
 
+def find_person_by_name(fullname):
+    try:
+        rows = fetch_sheet_data()
+    except Exception:
+        return None
+    for row in rows:
+        if row["ชื่อ-สกุล"] == fullname:
+            return row
+    return None
+
+
+def build_header():
+    return FlexBox(
+        layout="horizontal",
+        background_color="#1565c0",
+        padding_all="md",
+        spacing="md",
+        contents=[
+            FlexImage(url=LOGO_URL, size="40px", aspect_mode="fit", flex=0),
+            FlexText(
+                text="ศิษย์เก่า สวนกุหลาบนนท์",
+                color="#ffffff",
+                size="sm",
+                weight="bold",
+                gravity="center"
+            )
+        ]
+    )
+
+
 def build_bubble(r):
     name = f"{r['ยศ']} {r['ชื่อ-สกุล']}".strip()
-    nickname = r["ชื่อเล่น"]
-    position = r["ตำแหน่ง"]
-    phone = r["โทร"]
-    gen = r["รุ่น"]
 
     body_contents = [
-        FlexText(
-            text=name,
-            weight="bold",
-            size="md",
-            color="#1a237e",
-            wrap=True
-        ),
+        FlexText(text=name, weight="bold", size="md", color="#1a237e", wrap=True),
     ]
-
-    if nickname:
-        body_contents.append(
-            FlexText(
-                text=f"ชื่อเล่น: {nickname}",
-                size="sm",
-                color="#555555",
-                margin="xs"
-            )
-        )
-
-    if gen:
-        body_contents.append(
-            FlexText(
-                text=f"รุ่น: {gen}",
-                size="sm",
-                color="#555555",
-                margin="xs"
-            )
-        )
-
-    if position:
+    if r["ชื่อเล่น"]:
+        body_contents.append(FlexText(text=f"ชื่อเล่น: {r['ชื่อเล่น']}", size="sm", color="#555555", margin="xs"))
+    if r["รุ่น"]:
+        body_contents.append(FlexText(text=f"รุ่น: {r['รุ่น']}", size="sm", color="#555555", margin="xs"))
+    if r["ตำแหน่ง"]:
         body_contents.append(FlexSeparator(margin="md"))
-        body_contents.append(
-            FlexText(
-                text=position,
-                size="sm",
-                color="#333333",
-                wrap=True,
-                margin="md"
-            )
-        )
+        body_contents.append(FlexText(text=r["ตำแหน่ง"], size="sm", color="#333333", wrap=True, margin="md"))
 
     footer_contents = []
-    if phone:
+    if r["โทร"]:
         footer_contents.append(
             FlexButton(
-                action=URIAction(label=f"📞 {phone}", uri=f"tel:{phone}"),
-                style="primary",
-                color="#1565c0",
-                height="sm"
+                action=URIAction(label=f"📞 {r['โทร']}", uri=f"tel:{r['โทร']}"),
+                style="primary", color="#1565c0", height="sm"
             )
         )
 
-    bubble = FlexBubble(
-        header=FlexBox(
-            layout="horizontal",
-            background_color="#1565c0",
-            padding_all="md",
-            spacing="md",
-            contents=[
-                FlexImage(
-                    url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/%E0%B8%95%E0%B8%A3%E0%B8%B2%E0%B9%80%E0%B8%AA%E0%B8%A1%E0%B8%B2_%28%E0%B8%8A%E0%B8%A1%E0%B8%9E%E0%B8%B9_-_%E0%B8%9F%E0%B9%89%E0%B8%B2%29.png/250px-%E0%B8%95%E0%B8%A3%E0%B8%B2%E0%B9%80%E0%B8%AA%E0%B8%A1%E0%B8%B2_%28%E0%B8%8A%E0%B8%A1%E0%B8%9E%E0%B8%B9_-_%E0%B8%9F%E0%B9%89%E0%B8%B2%29.png",
-                    size="40px",
-                    aspect_mode="fit",
-                    flex=0
-                ),
-                FlexText(
-                    text="ศิษย์เก่า สวนกุหลาบนนท์",
-                    color="#ffffff",
-                    size="sm",
-                    weight="bold",
-                    gravity="center"
-                )
-            ]
-        ),
-        body=FlexBox(
-            layout="vertical",
-            contents=body_contents,
-            padding_all="lg"
-        ),
-        footer=FlexBox(
-            layout="vertical",
-            contents=footer_contents,
-            padding_all="md"
-        ) if footer_contents else None,
-        styles={
-            "header": {"backgroundColor": "#1565c0"},
-            "body": {"backgroundColor": "#ffffff"},
-        }
+    return FlexBubble(
+        header=build_header(),
+        body=FlexBox(layout="vertical", contents=body_contents, padding_all="lg"),
+        footer=FlexBox(layout="vertical", contents=footer_contents, padding_all="md") if footer_contents else None,
+        styles={"header": {"backgroundColor": "#1565c0"}, "body": {"backgroundColor": "#ffffff"}}
     )
-    return bubble
 
 
-def build_flex_message(results, keyword):
+def build_list_bubble(results, total):
+    shown = results[:MAX_LIST_ITEMS]
+    title_text = f"พบ {total} รายการ — เลือกดูรายละเอียด"
+    if total > MAX_LIST_ITEMS:
+        title_text += f" (แสดง {MAX_LIST_ITEMS} รายการแรก)"
+
+    body_contents = [
+        FlexText(text=title_text, size="sm", color="#555555", wrap=True, margin="none")
+    ]
+
+    for r in shown:
+        label = f"{r['ยศ']} {r['ชื่อ-สกุล']}".strip()
+        if r["ชื่อเล่น"]:
+            label += f" ({r['ชื่อเล่น']})"
+        # ตัด label ให้ไม่เกิน 40 ตัวอักษร (ข้อจำกัดของ LINE)
+        if len(label) > 40:
+            label = label[:39] + "…"
+
+        body_contents.append(FlexSeparator(margin="sm"))
+        body_contents.append(
+            FlexButton(
+                action=PostbackAction(
+                    label=label,
+                    data=f"detail:{r['ชื่อ-สกุล']}",
+                    display_text=f"ดูข้อมูล {r['ยศ']} {r['ชื่อ-สกุล']}"
+                ),
+                style="link",
+                color="#1565c0",
+                height="sm",
+                margin="none"
+            )
+        )
+
+    return FlexBubble(
+        header=build_header(),
+        body=FlexBox(layout="vertical", contents=body_contents, padding_all="lg"),
+        styles={"header": {"backgroundColor": "#1565c0"}, "body": {"backgroundColor": "#ffffff"}}
+    )
+
+
+def build_flex_message(results):
     bubbles = [build_bubble(r) for r in results[:MAX_BUBBLES]]
-
     alt_text = f"พบ {len(results)} รายการ" if len(results) > 1 else f"{results[0]['ยศ']} {results[0]['ชื่อ-สกุล']}"
-
     if len(bubbles) == 1:
         return FlexMessage(alt_text=alt_text, contents=bubbles[0])
-    else:
-        return FlexMessage(
-            alt_text=alt_text,
-            contents=FlexCarousel(contents=bubbles)
-        )
+    return FlexMessage(alt_text=alt_text, contents=FlexCarousel(contents=bubbles))
 
 
 @app.route("/callback", methods=["POST"])
@@ -230,6 +227,39 @@ def callback():
     return "OK"
 
 
+@handler.add(PostbackEvent)
+def handle_postback(event):
+    try:
+        data = event.postback.data
+        if not data.startswith("detail:"):
+            return
+
+        fullname = data[len("detail:"):]
+        person = find_person_by_name(fullname)
+
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            if not person:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=f"ไม่พบข้อมูลของ {fullname}")]
+                    )
+                )
+                return
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[FlexMessage(
+                        alt_text=f"{person['ยศ']} {person['ชื่อ-สกุล']}",
+                        contents=build_bubble(person)
+                    )]
+                )
+            )
+    except Exception as e:
+        app.logger.error(f"handle_postback error: {e}", exc_info=True)
+
+
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_message(event):
     try:
@@ -240,7 +270,7 @@ def handle_message(event):
 
         group_id = event.source.group_id
 
-        if text.strip() == "#groupid":
+        if text == "#groupid":
             with ApiClient(configuration) as api_client:
                 line_bot_api = MessagingApi(api_client)
                 line_bot_api.reply_message(
@@ -277,10 +307,7 @@ def handle_message(event):
 
             if error:
                 line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=error)]
-                    )
+                    ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=error)])
                 )
                 return
 
@@ -293,20 +320,24 @@ def handle_message(event):
                 )
                 return
 
-            messages = []
-            if len(results) > MAX_BUBBLES:
-                messages.append(TextMessage(
-                    text=f"พบ {len(results)} รายการ (แสดง {MAX_BUBBLES} รายการแรก)"
-                ))
-
-            messages.append(build_flex_message(results, keyword))
-
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=messages
+            # เกิน 5 รายการ → แสดงรายชื่อให้เลือกก่อน
+            if len(results) > LIST_THRESHOLD:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[FlexMessage(
+                            alt_text=f"พบ {len(results)} รายการ กรุณาเลือก",
+                            contents=build_list_bubble(results, len(results))
+                        )]
+                    )
                 )
-            )
+            else:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[build_flex_message(results)]
+                    )
+                )
 
     except Exception as e:
         app.logger.error(f"handle_message error: {e}", exc_info=True)
