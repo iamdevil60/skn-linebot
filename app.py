@@ -7,7 +7,8 @@ from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
-    ReplyMessageRequest, TextMessage
+    ReplyMessageRequest, TextMessage, FlexMessage, FlexCarousel, FlexBubble,
+    FlexBox, FlexText, FlexSeparator, FlexButton, URIAction
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
@@ -20,6 +21,8 @@ SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1WCh7nGdhECzj8Ipl6IxTuDqKsRjA
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
 
+MAX_BUBBLES = 10
+
 
 def fetch_sheet_data():
     url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
@@ -27,7 +30,7 @@ def fetch_sheet_data():
         content = response.read().decode("utf-8-sig")
     reader = csv.reader(io.StringIO(content))
     rows = []
-    next(reader, None)  # skip header row
+    next(reader, None)
     for cols in reader:
         if len(cols) < 6:
             continue
@@ -47,7 +50,7 @@ def search_alumni(keyword):
     try:
         rows = fetch_sheet_data()
     except Exception as e:
-        return f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}"
+        return None, f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}"
 
     results = []
     for row in rows:
@@ -57,23 +60,113 @@ def search_alumni(keyword):
         if keyword in haystack:
             results.append(row)
 
-    if not results:
-        return "ไม่พบข้อมูล"
+    return results, None
 
-    lines = []
-    for r in results:
-        name_part = f"{r['ยศ']} {r['ชื่อ-สกุล']}".strip()
-        if r["ชื่อเล่น"]:
-            name_part += f" ({r['ชื่อเล่น']})"
-        parts = [name_part]
-        if r["ตำแหน่ง"]:
-            parts.append(r["ตำแหน่ง"])
-        if r["โทร"]:
-            parts.append(r["โทร"])
-        lines.append(" | ".join(parts))
 
-    header = f"พบ {len(results)} รายการ:\n" if len(results) > 1 else ""
-    return header + "\n".join(lines)
+def build_bubble(r):
+    name = f"{r['ยศ']} {r['ชื่อ-สกุล']}".strip()
+    nickname = r["ชื่อเล่น"]
+    position = r["ตำแหน่ง"]
+    phone = r["โทร"]
+    gen = r["รุ่น"]
+
+    body_contents = [
+        FlexText(
+            text=name,
+            weight="bold",
+            size="md",
+            color="#1a237e",
+            wrap=True
+        ),
+    ]
+
+    if nickname:
+        body_contents.append(
+            FlexText(
+                text=f"ชื่อเล่น: {nickname}",
+                size="sm",
+                color="#555555",
+                margin="xs"
+            )
+        )
+
+    if gen:
+        body_contents.append(
+            FlexText(
+                text=f"รุ่น: {gen}",
+                size="sm",
+                color="#555555",
+                margin="xs"
+            )
+        )
+
+    if position:
+        body_contents.append(FlexSeparator(margin="md"))
+        body_contents.append(
+            FlexText(
+                text=position,
+                size="sm",
+                color="#333333",
+                wrap=True,
+                margin="md"
+            )
+        )
+
+    footer_contents = []
+    if phone:
+        footer_contents.append(
+            FlexButton(
+                action=URIAction(label=f"📞 {phone}", uri=f"tel:{phone}"),
+                style="primary",
+                color="#1565c0",
+                height="sm"
+            )
+        )
+
+    bubble = FlexBubble(
+        header=FlexBox(
+            layout="vertical",
+            background_color="#1565c0",
+            padding_all="md",
+            contents=[
+                FlexText(
+                    text="🚔 ศิษย์เก่า สวนกุหลาบนนท์",
+                    color="#ffffff",
+                    size="xs",
+                    weight="bold"
+                )
+            ]
+        ),
+        body=FlexBox(
+            layout="vertical",
+            contents=body_contents,
+            padding_all="lg"
+        ),
+        footer=FlexBox(
+            layout="vertical",
+            contents=footer_contents,
+            padding_all="md"
+        ) if footer_contents else None,
+        styles={
+            "header": {"backgroundColor": "#1565c0"},
+            "body": {"backgroundColor": "#ffffff"},
+        }
+    )
+    return bubble
+
+
+def build_flex_message(results, keyword):
+    bubbles = [build_bubble(r) for r in results[:MAX_BUBBLES]]
+
+    alt_text = f"พบ {len(results)} รายการ" if len(results) > 1 else f"{results[0]['ยศ']} {results[0]['ชื่อ-สกุล']}"
+
+    if len(bubbles) == 1:
+        return FlexMessage(alt_text=alt_text, contents=bubbles[0])
+    else:
+        return FlexMessage(
+            alt_text=alt_text,
+            contents=FlexCarousel(contents=bubbles)
+        )
 
 
 @app.route("/callback", methods=["POST"])
@@ -92,13 +185,11 @@ def handle_message(event):
     try:
         text = event.message.text.strip()
 
-        # ตอบเฉพาะในกลุ่มเท่านั้น
         if event.source.type != "group":
             return
 
         group_id = event.source.group_id
 
-        # แสดง Group ID เมื่อพิมพ์ #groupid (สำหรับ admin ใช้ตั้งค่า)
         if text.strip() == "#groupid":
             with ApiClient(configuration) as api_client:
                 line_bot_api = MessagingApi(api_client)
@@ -110,7 +201,6 @@ def handle_message(event):
                 )
             return
 
-        # ตรวจสอบ whitelist (ถ้ากำหนดไว้)
         allowed_groups = [g.strip() for g in os.environ.get("ALLOWED_GROUP_IDS", "").split(",") if g.strip()]
         if allowed_groups and group_id not in allowed_groups:
             return
@@ -119,19 +209,54 @@ def handle_message(event):
             return
 
         keyword = text[1:].strip()
-        if not keyword:
-            reply = "กรุณาระบุคำค้นหา เช่น #สมชาย หรือ #รุ่น15"
-        else:
-            reply = search_alumni(keyword)
 
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
+
+            if not keyword:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text="กรุณาระบุคำค้นหา เช่น #สมชาย หรือ #รุ่น15")]
+                    )
+                )
+                return
+
+            results, error = search_alumni(keyword)
+
+            if error:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=error)]
+                    )
+                )
+                return
+
+            if not results:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=f'ไม่พบข้อมูลสำหรับ "{keyword}"')]
+                    )
+                )
+                return
+
+            messages = []
+            if len(results) > MAX_BUBBLES:
+                messages.append(TextMessage(
+                    text=f"พบ {len(results)} รายการ (แสดง {MAX_BUBBLES} รายการแรก)"
+                ))
+
+            messages.append(build_flex_message(results, keyword))
+
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text=reply)]
+                    messages=messages
                 )
             )
+
     except Exception as e:
         app.logger.error(f"handle_message error: {e}", exc_info=True)
         try:
