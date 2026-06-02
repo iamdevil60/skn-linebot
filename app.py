@@ -96,6 +96,25 @@ def handle_message(event):
         if event.source.type != "group":
             return
 
+        group_id = event.source.group_id
+
+        # แสดง Group ID เมื่อพิมพ์ #groupid (สำหรับ admin ใช้ตั้งค่า)
+        if text.strip() == "#groupid":
+            with ApiClient(configuration) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=f"Group ID: {group_id}")]
+                    )
+                )
+            return
+
+        # ตรวจสอบ whitelist (ถ้ากำหนดไว้)
+        allowed_groups = [g.strip() for g in os.environ.get("ALLOWED_GROUP_IDS", "").split(",") if g.strip()]
+        if allowed_groups and group_id not in allowed_groups:
+            return
+
         if not text.startswith("#"):
             return
 
