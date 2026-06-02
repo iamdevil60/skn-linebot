@@ -2,6 +2,7 @@ import os
 import csv
 import io
 import urllib.request
+import anthropic
 from flask import Flask, request, abort
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -17,6 +18,8 @@ app = Flask(__name__)
 CHANNEL_SECRET = os.environ.get("LINE_CHANNEL_SECRET", "ec13fef6789938fb2f4bfa0053e24922")
 CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "AS9iC1Gsi0vhK2wtreKqlE0yB9twviXp+JjchPzWGZA0wXXZ06AB5n1irM5iwPZLNfIxc5sYbNuuEr5+4ATch/w2igVeMptfMJd7KAbpEbjx/aEFhOaXsjf9KmxMfbphstrybpBfAtl9L7G1tdp3iwdB04t89/1O/w1cDnyilFU=")
 SPREADSHEET_ID = os.environ.get("SPREADSHEET_ID", "1WCh7nGdhECzj8Ipl6IxTuDqKsRjABg50XFyZZ2rhQUc")
+
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(CHANNEL_SECRET)
@@ -45,6 +48,31 @@ def fetch_sheet_data():
     return rows
 
 
+def extract_keywords_with_ai(query):
+    if not ANTHROPIC_API_KEY:
+        return [normalize_keyword(query)]
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "ข้อมูลมีคอลัมน์: รุ่น, ยศ, ชื่อ-สกุล, ชื่อเล่น, ตำแหน่ง, โทร\n"
+                    "จากประโยคต่อไปนี้ ให้แยก keyword สำหรับค้นหาออกมา "
+                    "ตอบเป็น keyword เท่านั้น คั่นด้วยจุลภาค ไม่ต้องอธิบาย\n"
+                    f"ประโยค: {query}"
+                )
+            }]
+        )
+        raw = message.content[0].text.strip()
+        keywords = [k.strip() for k in raw.split(",") if k.strip()]
+        return keywords if keywords else [normalize_keyword(query)]
+    except Exception:
+        return [normalize_keyword(query)]
+
+
 def normalize_keyword(keyword):
     k = keyword.strip().lower()
     # "#รุ่น58" หรือ "#รุ่นที่58" → "58"
@@ -55,8 +83,12 @@ def normalize_keyword(keyword):
     return k
 
 
-def search_alumni(keyword):
-    keyword = normalize_keyword(keyword)
+def search_alumni(keywords):
+    if isinstance(keywords, str):
+        keywords = [normalize_keyword(keywords)]
+    else:
+        keywords = [normalize_keyword(k) for k in keywords]
+
     try:
         rows = fetch_sheet_data()
     except Exception as e:
@@ -67,7 +99,7 @@ def search_alumni(keyword):
         haystack = " ".join([
             row["รุ่น"], row["ยศ"], row["ชื่อ-สกุล"], row["ชื่อเล่น"], row["ตำแหน่ง"]
         ]).lower()
-        if keyword in haystack:
+        if all(k in haystack for k in keywords):
             results.append(row)
 
     return results, None
@@ -240,7 +272,8 @@ def handle_message(event):
                 )
                 return
 
-            results, error = search_alumni(keyword)
+            keywords = extract_keywords_with_ai(keyword)
+            results, error = search_alumni(keywords)
 
             if error:
                 line_bot_api.reply_message(
