@@ -8,7 +8,7 @@ from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi,
     ReplyMessageRequest, TextMessage, FlexMessage, FlexCarousel, FlexBubble,
-    FlexBox, FlexText, FlexSeparator, FlexButton, URIAction
+    FlexBox, FlexText, FlexSeparator, FlexButton, FlexImage, URIAction
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent
 
@@ -135,15 +135,23 @@ def build_bubble(r):
 
     bubble = FlexBubble(
         header=FlexBox(
-            layout="vertical",
+            layout="horizontal",
             background_color="#1565c0",
             padding_all="md",
+            spacing="md",
             contents=[
+                FlexImage(
+                    url="https://image.makewebeasy.net/makeweb/0/9W23RJcPu/DefaultData/skn_1.png?v=202405291424",
+                    size="40px",
+                    aspect_mode="fit",
+                    flex=0
+                ),
                 FlexText(
-                    text="🚔 ศิษย์เก่า สวนกุหลาบนนท์",
+                    text="ศิษย์เก่า สวนกุหลาบนนท์",
                     color="#ffffff",
-                    size="xs",
-                    weight="bold"
+                    size="sm",
+                    weight="bold",
+                    gravity="center"
                 )
             ]
         ),
