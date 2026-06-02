@@ -141,7 +141,7 @@ def build_bubble(r):
             spacing="md",
             contents=[
                 FlexImage(
-                    url="https://image.makewebeasy.net/makeweb/0/9W23RJcPu/DefaultData/skn_1.png?v=202405291424",
+                    url="https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/%E0%B8%95%E0%B8%A3%E0%B8%B2%E0%B9%80%E0%B8%AA%E0%B8%A1%E0%B8%B2_%28%E0%B8%8A%E0%B8%A1%E0%B8%9E%E0%B8%B9_-_%E0%B8%9F%E0%B9%89%E0%B8%B2%29.png/250px-%E0%B8%95%E0%B8%A3%E0%B8%B2%E0%B9%80%E0%B8%AA%E0%B8%A1%E0%B8%B2_%28%E0%B8%8A%E0%B8%A1%E0%B8%9E%E0%B8%B9_-_%E0%B8%9F%E0%B9%89%E0%B8%B2%29.png",
                     size="40px",
                     aspect_mode="fit",
                     flex=0
