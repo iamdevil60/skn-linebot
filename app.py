@@ -92,6 +92,10 @@ def handle_message(event):
     try:
         text = event.message.text.strip()
 
+        # ตอบเฉพาะในกลุ่มเท่านั้น
+        if event.source.type != "group":
+            return
+
         if not text.startswith("#"):
             return
 
