@@ -52,7 +52,7 @@ def search_alumni(keyword):
     results = []
     for row in rows:
         haystack = " ".join([
-            row["รุ่น"], row["ยศ"], row["ชื่อ-สกุล"], row["ชื่อเล่น"]
+            row["รุ่น"], row["ยศ"], row["ชื่อ-สกุล"], row["ชื่อเล่น"], row["ตำแหน่ง"]
         ]).lower()
         if keyword in haystack:
             results.append(row)
