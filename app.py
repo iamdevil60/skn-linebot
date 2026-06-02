@@ -24,17 +24,20 @@ handler = WebhookHandler(CHANNEL_SECRET)
 def fetch_sheet_data():
     url = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/export?format=csv"
     with urllib.request.urlopen(url) as response:
-        content = response.read().decode("utf-8")
-    reader = csv.DictReader(io.StringIO(content))
+        content = response.read().decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(content))
     rows = []
-    for row in reader:
+    next(reader, None)  # skip header row
+    for cols in reader:
+        if len(cols) < 6:
+            continue
         rows.append({
-            "รุ่น": row.get("﻿รุ่น", row.get("รุ่น", "")).strip(),
-            "ยศ": row.get("ยศ", "").strip(),
-            "ชื่อ-สกุล": row.get("ชื่อ-สกุล", "").strip(),
-            "ชื่อเล่น": row.get("ชื่อเล่น", "").strip(),
-            "ตำแหน่ง": row.get("ตำแหน่ง", "").strip(),
-            "โทร": row.get("โทร", "").strip(),
+            "รุ่น": cols[0].strip(),
+            "ยศ": cols[1].strip(),
+            "ชื่อ-สกุล": cols[2].strip(),
+            "ชื่อเล่น": cols[3].strip(),
+            "ตำแหน่ง": cols[4].strip(),
+            "โทร": cols[5].strip(),
         })
     return rows
 
