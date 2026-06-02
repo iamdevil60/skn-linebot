@@ -45,8 +45,18 @@ def fetch_sheet_data():
     return rows
 
 
+def normalize_keyword(keyword):
+    k = keyword.strip().lower()
+    # "#รุ่น58" หรือ "#รุ่นที่58" → "58"
+    for prefix in ["รุ่นที่", "รุ่น"]:
+        if k.startswith(prefix):
+            k = k[len(prefix):].strip()
+            break
+    return k
+
+
 def search_alumni(keyword):
-    keyword = keyword.strip().lower()
+    keyword = normalize_keyword(keyword)
     try:
         rows = fetch_sheet_data()
     except Exception as e:
