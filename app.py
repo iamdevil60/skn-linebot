@@ -188,6 +188,51 @@ def build_list_message(results):
     return FlexMessage(alt_text=f"พบ {total} รายการ กรุณาเลือก", contents=FlexCarousel(contents=bubbles))
 
 
+def build_manual_message():
+    examples = [
+        ("#สมชาย", "ค้นหาด้วยชื่อ"),
+        ("#วิทัศน์", "ค้นหาด้วยชื่อเล่น"),
+        ("#ร.ต.อ.", "ค้นหาด้วยยศ"),
+        ("#รุ่น15", "ค้นหาด้วยรุ่น"),
+        ("#ผกก.", "ค้นหาด้วยตำแหน่ง"),
+    ]
+
+    body_contents = [
+        FlexText(text="พิมพ์ # ตามด้วยคำค้นหา", size="sm", color="#555555", wrap=True),
+        FlexSeparator(margin="md"),
+        FlexText(text="ตัวอย่างคำสั่ง", weight="bold", size="sm", color="#1a237e", margin="md"),
+    ]
+
+    for cmd, desc in examples:
+        body_contents.append(
+            FlexBox(
+                layout="horizontal",
+                margin="sm",
+                contents=[
+                    FlexText(text=cmd, size="sm", color="#1565c0", weight="bold", flex=2),
+                    FlexText(text=desc, size="sm", color="#555555", flex=3, wrap=True),
+                ]
+            )
+        )
+
+    body_contents.append(FlexSeparator(margin="md"))
+    body_contents.append(
+        FlexText(
+            text="หมายเหตุ: ใช้งานได้เฉพาะในกลุ่มที่กำหนดเท่านั้น",
+            size="xs", color="#aaaaaa", wrap=True, margin="md"
+        )
+    )
+
+    return FlexMessage(
+        alt_text="คู่มือการใช้งาน Bot ศิษย์เก่าสวนกุหลาบนนท์",
+        contents=FlexBubble(
+            header=build_header(),
+            body=FlexBox(layout="vertical", contents=body_contents, padding_all="lg"),
+            styles={"header": {"backgroundColor": "#1565c0"}, "body": {"backgroundColor": "#ffffff"}}
+        )
+    )
+
+
 def build_flex_message(results):
     bubbles = [build_bubble(r) for r in results[:MAX_BUBBLES]]
     alt_text = f"พบ {len(results)} รายการ" if len(results) > 1 else f"{results[0]['ยศ']} {results[0]['ชื่อ-สกุล']}"
@@ -269,6 +314,17 @@ def handle_message(event):
             return
 
         keyword = text[1:].strip()
+
+        if keyword == "คู่มือ":
+            with ApiClient(configuration) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[build_manual_message()]
+                    )
+                )
+            return
 
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
